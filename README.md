@@ -1,2 +1,5 @@
-# gymnarium_application
-Application making all gymnarium framework crates available through a cli interface.
+# Gymnarium: Application
+
+Application using the [Gymnarium](https://github.com/tiquthon/gymnarium) framework.
+
+Makes all gymnarium framework structures available through a cli interface.
