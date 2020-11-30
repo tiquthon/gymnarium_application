@@ -22,11 +22,11 @@ use serde::Serialize;
 
 use gymnarium::gymnarium_agents_random::RandomAgent;
 use gymnarium::gymnarium_base::{ActionSpace, Agent, Environment, Seed, ToActionMapper};
-use gymnarium::gymnarium_environments_code_bullet::ai_learns_to_drive::{
-    AiLearnsToDrive, AiLearnsToDriveInputToActionMapper,
-};
 use gymnarium::gymnarium_environments_gym::mountain_car::{
     MountainCar, MountainCarInputToActionMapper,
+};
+use gymnarium::gymnarium_environments_tiquthon::code_bullet::ai_learns_to_drive::{
+    AiLearnsToDrive, AiLearnsToDriveInputToActionMapper,
 };
 use gymnarium::gymnarium_visualisers_base::{
     input, DrawableEnvironment, InputAgent, InputProvider, TwoDimensionalDrawableEnvironment,
