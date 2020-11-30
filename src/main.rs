@@ -295,12 +295,12 @@ fn main() {
                 .takes_value(true)
                 .value_name("SEED")
                 .display_order(50))
-            .arg(Arg::with_name("reset_environment_on_done")
+            .arg(Arg::with_name("not_reset_environment_on_done")
                 .short("r")
-                .long("reset-environment-on-done")
-                .help("resets the environment when the environment says it's done")
+                .long("not-reset-environment-on-done")
+                .help("does not reset the environment when the environment says it's done")
                 .long_help("After every step the environment returns if the current episode is \
-                done. With this flag the given environment gets reset if this happens.")
+                done. With this flag the given environment does not get reset if this happens.")
                 .display_order(60))
             .arg(Arg::with_name("reset_agent_on_done")
                 .short("q")
@@ -446,7 +446,7 @@ fn start_with_config(matched_subcommand_args: &ArgMatches) {
 
     let seed: Option<Seed> = matched_subcommand_args.value_of("seed").map(Seed::from);
     let reset_environment_on_done: bool =
-        matched_subcommand_args.is_present("reset_environment_on_done");
+        !matched_subcommand_args.is_present("not_reset_environment_on_done");
     let reset_agent_on_done: bool = matched_subcommand_args.is_present("reset_agent_on_done");
     let environment_load_path: Option<String> = matched_subcommand_args
         .value_of("environment_load_path")
