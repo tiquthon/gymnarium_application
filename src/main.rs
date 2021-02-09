@@ -1,12 +1,7 @@
-extern crate bincode;
 extern crate clap;
 extern crate gymnarium;
-extern crate ron;
-extern crate serde;
-extern crate serde_json;
 
 mod availables;
-mod runs;
 
 use std::collections::HashMap;
 use std::error::Error;
@@ -18,10 +13,9 @@ use clap::{
     crate_authors, crate_description, crate_version, App, AppSettings, Arg, ArgMatches, SubCommand,
 };
 
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-
 use gymnarium::gymnarium_agents_random::RandomAgent;
+use gymnarium::gymnarium_base::serde::de::DeserializeOwned;
+use gymnarium::gymnarium_base::serde::Serialize;
 use gymnarium::gymnarium_base::{ActionSpace, Agent, Environment, Seed, ToActionMapper};
 use gymnarium::gymnarium_environments_gym::mountain_car::{
     MountainCar, MountainCarInputToActionMapper,
@@ -34,9 +28,9 @@ use gymnarium::gymnarium_visualisers_base::{
     TwoDimensionalVisualiser, Visualiser,
 };
 use gymnarium::gymnarium_visualisers_piston::PistonVisualiser;
+use gymnarium::{run_with_no_visualiser, run_with_two_dimensional_visualiser, RunOptions};
 
 use crate::availables::*;
-use crate::runs::{run_with_no_visualiser, run_with_two_dimensional_visualiser, RunOptions};
 
 const APP_NAME: &str = "Gymnarium Application";
 
