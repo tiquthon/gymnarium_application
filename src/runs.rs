@@ -1,6 +1,5 @@
 use std::error::Error;
 use std::fmt::{Debug, Display};
-use std::fs::read_to_string;
 use std::time::Duration;
 
 use serde::de::DeserializeOwned;
@@ -69,12 +68,11 @@ pub fn run_with_no_visualiser<
 
         let (new_state, reward, done, _) = environment.step(&action).unwrap();
         step += 1;
-
         agent
             .process_reward(&state, &new_state, reward, done)
             .unwrap();
 
-        state = if run_options.reset_environment_on_done && done {
+        state = if step > 2000 || (run_options.reset_environment_on_done && done) {
             step = 0;
             episode += 1;
             environment.reset().unwrap()
@@ -466,6 +464,7 @@ enum LoadError<EAError: Error> {
     IoError(std::io::Error),
     SerdeJsonError(serde_json::Error),
     RonError(ron::error::Error),
+    BincodeError(Box<bincode::ErrorKind>),
     EnvironmentAgentError(EAError),
     UnknownFormat(String),
 }
@@ -476,6 +475,7 @@ impl<EAError: Error> Display for LoadError<EAError> {
             Self::IoError(error) => write!(f, "Received IoError ({})", error),
             Self::SerdeJsonError(error) => write!(f, "Received SerdeJsonError ({})", error),
             Self::RonError(error) => write!(f, "Received RonError ({})", error),
+            Self::BincodeError(error) => write!(f, "Received BincodeError ({})", error),
             Self::EnvironmentAgentError(error) => {
                 write!(f, "Recedived EnvironmentError({})", error)
             }
@@ -500,6 +500,12 @@ impl<EAError: Error> From<serde_json::error::Error> for LoadError<EAError> {
     }
 }
 
+impl<EAError: Error> From<Box<bincode::ErrorKind>> for LoadError<EAError> {
+    fn from(error: Box<bincode::ErrorKind>) -> Self {
+        Self::BincodeError(error)
+    }
+}
+
 impl<EAError: Error> From<ron::error::Error> for LoadError<EAError> {
     fn from(error: ron::error::Error) -> Self {
         Self::RonError(error)
@@ -516,17 +522,24 @@ fn load_environment<
     environment_load_path_string: String,
 ) -> Result<(), LoadError<EError>> {
     if environment_load_path_string.ends_with(".json") {
-        let file_contents = read_to_string(environment_load_path_string)?;
-        let deserialized = serde_json::from_str(&file_contents)?;
         environment
-            .load(deserialized)
+            .load(serde_json::from_reader(std::fs::File::open(
+                environment_load_path_string,
+            )?)?)
             .map_err(LoadError::EnvironmentAgentError)?;
         Ok(())
     } else if environment_load_path_string.ends_with(".ron") {
-        let file_contents = read_to_string(environment_load_path_string)?;
-        let deserialized = ron::from_str(&file_contents)?;
         environment
-            .load(deserialized)
+            .load(ron::de::from_reader(std::fs::File::open(
+                environment_load_path_string,
+            )?)?)
+            .map_err(LoadError::EnvironmentAgentError)?;
+        Ok(())
+    } else if environment_load_path_string.ends_with(".bin") {
+        environment
+            .load(bincode::deserialize_from(std::fs::File::open(
+                environment_load_path_string,
+            )?)?)
             .map_err(LoadError::EnvironmentAgentError)?;
         Ok(())
     } else {
@@ -539,17 +552,24 @@ fn load_agent<AError: Error, AData: Serialize + DeserializeOwned, A: Agent<AErro
     agent_load_path_string: String,
 ) -> Result<(), LoadError<AError>> {
     if agent_load_path_string.ends_with(".json") {
-        let file_contents = read_to_string(agent_load_path_string)?;
-        let deserialized = serde_json::from_str(&file_contents)?;
         agent
-            .load(deserialized)
+            .load(serde_json::from_reader(std::fs::File::open(
+                agent_load_path_string,
+            )?)?)
             .map_err(LoadError::EnvironmentAgentError)?;
         Ok(())
     } else if agent_load_path_string.ends_with(".ron") {
-        let file_contents = read_to_string(agent_load_path_string)?;
-        let deserialized = ron::from_str(&file_contents)?;
         agent
-            .load(deserialized)
+            .load(ron::de::from_reader(std::fs::File::open(
+                agent_load_path_string,
+            )?)?)
+            .map_err(LoadError::EnvironmentAgentError)?;
+        Ok(())
+    } else if agent_load_path_string.ends_with(".bin") {
+        agent
+            .load(bincode::deserialize_from(std::fs::File::open(
+                agent_load_path_string,
+            )?)?)
             .map_err(LoadError::EnvironmentAgentError)?;
         Ok(())
     } else {
@@ -562,6 +582,7 @@ enum StoreError {
     IoError(std::io::Error),
     SerdeJsonError(serde_json::Error),
     RonError(ron::error::Error),
+    BincodeError(Box<bincode::ErrorKind>),
     UnknownFormat(String),
 }
 
@@ -571,6 +592,7 @@ impl Display for StoreError {
             Self::IoError(error) => write!(f, "Received IoError ({})", error),
             Self::SerdeJsonError(error) => write!(f, "Received SerdeJsonError ({})", error),
             Self::RonError(error) => write!(f, "Received RonError ({})", error),
+            Self::BincodeError(error) => write!(f, "Received BincodeError ({})", error),
             Self::UnknownFormat(path) => {
                 write!(f, "The file \"{}\" has an unknown file ending", path)
             }
@@ -598,6 +620,12 @@ impl From<ron::error::Error> for StoreError {
     }
 }
 
+impl From<Box<bincode::ErrorKind>> for StoreError {
+    fn from(error: Box<bincode::ErrorKind>) -> Self {
+        Self::BincodeError(error)
+    }
+}
+
 fn store_environment<
     EError: Error,
     EInfo: Debug,
@@ -608,14 +636,22 @@ fn store_environment<
     environment_store_path_string: String,
 ) -> Result<(), StoreError> {
     if environment_store_path_string.ends_with(".json") {
-        let data = environment.store();
-        let serialized = serde_json::to_string(&data)?;
-        std::fs::write(environment_store_path_string, serialized)?;
+        serde_json::to_writer(
+            std::fs::File::create(environment_store_path_string)?,
+            &environment.store(),
+        )?;
         Ok(())
     } else if environment_store_path_string.ends_with(".ron") {
-        let data = environment.store();
-        let serialized = ron::to_string(&data)?;
-        std::fs::write(environment_store_path_string, serialized)?;
+        ron::ser::to_writer(
+            std::fs::File::create(environment_store_path_string)?,
+            &environment.store(),
+        )?;
+        Ok(())
+    } else if environment_store_path_string.ends_with(".bin") {
+        bincode::serialize_into(
+            std::fs::File::create(environment_store_path_string)?,
+            &environment.store(),
+        )?;
         Ok(())
     } else {
         Err(StoreError::UnknownFormat(environment_store_path_string))
@@ -627,14 +663,22 @@ fn store_agent<AError: Error, AData: Serialize + DeserializeOwned, A: Agent<AErr
     agent_store_path_string: String,
 ) -> Result<(), StoreError> {
     if agent_store_path_string.ends_with(".json") {
-        let data = agent.store();
-        let serialized = serde_json::to_string(&data)?;
-        std::fs::write(agent_store_path_string, serialized)?;
+        serde_json::to_writer(
+            std::fs::File::create(agent_store_path_string)?,
+            &agent.store(),
+        )?;
         Ok(())
     } else if agent_store_path_string.ends_with(".ron") {
-        let data = agent.store();
-        let serialized = ron::to_string(&data)?;
-        std::fs::write(agent_store_path_string, serialized)?;
+        ron::ser::to_writer(
+            std::fs::File::create(agent_store_path_string)?,
+            &agent.store(),
+        )?;
+        Ok(())
+    } else if agent_store_path_string.ends_with(".bin") {
+        bincode::serialize_into(
+            std::fs::File::create(agent_store_path_string)?,
+            &agent.store(),
+        )?;
         Ok(())
     } else {
         Err(StoreError::UnknownFormat(agent_store_path_string))

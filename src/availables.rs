@@ -140,6 +140,12 @@ impl Available<SelectedEnvironment> for AvailableEnvironment {
                     default: "true".to_string(),
                     data_type: "bool".to_string(),
                 },
+                AvailableConfiguration {
+                    name: "car_sensor_distance".to_string(),
+                    description: "Sets the maximum distance obstacles can be detected.".to_string(),
+                    default: "750".to_string(),
+                    data_type: "f64".to_string(),
+                },
             ],
         }
     }
@@ -165,6 +171,10 @@ impl Available<SelectedEnvironment> for AvailableEnvironment {
                     .remove(&"track_visible".to_string())
                     .unwrap_or_else(|| "true".to_string())
                     .parse::<bool>()?,
+                car_sensor_distance: configuration
+                    .remove(&"car_sensor_distance".to_string())
+                    .unwrap_or_else(|| "750".to_string())
+                    .parse::<f64>()?,
             }),
         }
     }
@@ -235,6 +245,7 @@ pub enum SelectedEnvironment {
     CodeBulletAiLearnsToDrive {
         sensor_lines_visible: bool,
         track_visible: bool,
+        car_sensor_distance: f64,
     },
 }
 
@@ -337,7 +348,7 @@ impl AvailableSupportsAvailable<SelectedVisualiser, AvailableVisualiser> for Ava
     fn supports_available(&self) -> Vec<AvailableVisualiser> {
         match *self {
             Self::Random => vec![AvailableVisualiser::None, AvailableVisualiser::PistonIn2d],
-            Self::Input => vec![AvailableVisualiser::None, AvailableVisualiser::PistonIn2d],
+            Self::Input => vec![AvailableVisualiser::PistonIn2d],
         }
     }
 }
@@ -430,6 +441,12 @@ impl Available<SelectedVisualiser> for AvailableVisualiser {
                     default: "(640, 480)".to_string(),
                     data_type: "(u32, u32)".to_string(),
                 },
+                AvailableConfiguration {
+                    name: "max_frames_per_second".to_string(),
+                    description: "Sets the maximum frames per second for this window.".to_string(),
+                    default: "None".to_string(),
+                    data_type: "Option<u64>".to_string(),
+                },
             ],
         }
     }
@@ -451,6 +468,19 @@ impl Available<SelectedVisualiser> for AvailableVisualiser {
             Ok((numbers[0], numbers[1]))
         }
 
+        fn option_t_from_str<T: FromStr>(s: &str) -> Result<Option<T>, <T as FromStr>::Err> {
+            if s.eq_ignore_ascii_case("none") {
+                Ok(None)
+            } else {
+                if s.starts_with("Some(") || s.starts_with("some(") {
+                    s[5..s.len() - 1].parse::<T>()
+                } else {
+                    s.parse::<T>()
+                }
+                .map(Some)
+            }
+        }
+
         let mut configuration = configuration;
         match self {
             Self::None => Ok(SelectedVisualiser::None),
@@ -461,8 +491,11 @@ impl Available<SelectedVisualiser> for AvailableVisualiser {
                 window_dimension: configuration
                     .remove(&"window_dimension".to_string())
                     .and_then(|value| tuple_u32_u32_from_str(&value).ok())
-                    .or(Some((640, 480)))
-                    .unwrap(),
+                    .unwrap_or((640, 480)),
+                max_frames_per_second: configuration
+                    .remove(&"max_frames_per_second".to_string())
+                    .and_then(|value| option_t_from_str::<u64>(&value).ok())
+                    .unwrap_or(None),
             }),
         }
     }
@@ -502,7 +535,7 @@ impl AvailableSupportsAvailable<SelectedEnvironment, AvailableEnvironment> for A
 impl AvailableSupportsAvailable<SelectedAgent, AvailableAgent> for AvailableVisualiser {
     fn supports_available(&self) -> Vec<AvailableAgent> {
         match *self {
-            Self::None => vec![AvailableAgent::Random, AvailableAgent::Input],
+            Self::None => vec![AvailableAgent::Random],
             Self::PistonIn2d => vec![AvailableAgent::Random, AvailableAgent::Input],
         }
     }
@@ -513,10 +546,7 @@ impl AvailableSupportsAvailable<SelectedExitCondition, AvailableExitCondition>
 {
     fn supports_available(&self) -> Vec<AvailableExitCondition> {
         match *self {
-            Self::None => vec![
-                AvailableExitCondition::EpisodesSimulated,
-                AvailableExitCondition::VisualiserClosed,
-            ],
+            Self::None => vec![AvailableExitCondition::EpisodesSimulated],
             Self::PistonIn2d => vec![
                 AvailableExitCondition::EpisodesSimulated,
                 AvailableExitCondition::VisualiserClosed,
@@ -533,6 +563,7 @@ pub enum SelectedVisualiser {
     PistonIn2d {
         window_title: String,
         window_dimension: (u32, u32),
+        max_frames_per_second: Option<u64>,
     },
 }
 
@@ -662,9 +693,7 @@ impl AvailableSupportsAvailable<SelectedVisualiser, AvailableVisualiser>
             Self::EpisodesSimulated => {
                 vec![AvailableVisualiser::None, AvailableVisualiser::PistonIn2d]
             }
-            Self::VisualiserClosed => {
-                vec![AvailableVisualiser::None, AvailableVisualiser::PistonIn2d]
-            }
+            Self::VisualiserClosed => vec![AvailableVisualiser::PistonIn2d],
         }
     }
 }

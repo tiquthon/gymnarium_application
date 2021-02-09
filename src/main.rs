@@ -1,3 +1,4 @@
+extern crate bincode;
 extern crate clap;
 extern crate gymnarium;
 extern crate ron;
@@ -316,8 +317,8 @@ fn main() {
                 .long_help("Sets the state of the selected environment with the contents of the \
                 given file before the loop starts. Be sure to select the corresponding environment \
                 to this file. The file format is defined by the file suffix. Currently supported \
-                formats are: \"*.json\" (JavaScript Object Notation) and \"*.ron\" (Rusty Object \
-                Notation).")
+                formats are: \"*.json\" (JavaScript Object Notation), \"*.ron\" (Rusty Object \
+                Notation) and \"*.bin\" (binary zero-fluff encoding scheme).")
                 .takes_value(true)
                 .value_name("PATH")
                 .display_order(80))
@@ -328,7 +329,8 @@ fn main() {
                 .long_help("Saves the state of the selected environment in the given file after \
                 the loop stops. The given file will be overwritten. The file format is defined by \
                 the file suffix. Currently supported formats are: \"*.json\" (JavaScript Object \
-                Notation) and \"*.ron\" (Rusty Object Notation).")
+                Notation), \"*.ron\" (Rusty Object Notation) and \"*.bin\" (binary zero-fluff \
+                encoding scheme).")
                 .takes_value(true)
                 .value_name("PATH")
                 .display_order(90))
@@ -339,8 +341,8 @@ fn main() {
                 .long_help("Sets the state of the selected agent with the contents of the \
                 given file before the loop starts. Be sure to select the corresponding agent \
                 to this file. The file format is defined by the file suffix. Currently supported \
-                formats are: \"*.json\" (JavaScript Object Notation) and \"*.ron\" (Rusty Object \
-                Notation).")
+                formats are: \"*.json\" (JavaScript Object Notation), \"*.ron\" (Rusty Object \
+                Notation) and \"*.bin\" (binary zero-fluff encoding scheme).")
                 .takes_value(true)
                 .value_name("PATH")
                 .display_order(100))
@@ -351,7 +353,8 @@ fn main() {
                 .long_help("Saves the state of the selected agent in the given file after \
                 the loop stops. The given file will be overwritten. The file format is defined by \
                 the file suffix. Currently supported formats are: \"*.json\" (JavaScript Object \
-                Notation) and \"*.ron\" (Rusty Object Notation).")
+                Notation), \"*.ron\" (Rusty Object Notation) and \"*.bin\" (binary zero-fluff \
+                encoding scheme).")
                 .takes_value(true)
                 .value_name("PATH")
                 .display_order(110)))
@@ -739,10 +742,12 @@ fn start(
     fn create_environment_code_bullet_ai_learns_to_drive(
         sensor_lines_visible: bool,
         track_visible: bool,
+        car_sensor_distance: f64,
     ) -> AiLearnsToDrive {
         let mut a = AiLearnsToDrive::default();
         a.sensor_lines_visible(sensor_lines_visible);
         a.track_visible(track_visible);
+        a.car_sensor_distance(car_sensor_distance);
         a
     }
 
@@ -764,8 +769,9 @@ fn start(
     fn create_visualiser_piston_in_2d(
         window_title: String,
         window_dimension: (u32, u32),
+        max_frames_per_second: Option<u64>,
     ) -> PistonVisualiser {
-        PistonVisualiser::run(window_title, window_dimension)
+        PistonVisualiser::run(window_title, window_dimension, max_frames_per_second)
     }
 
     // INFO: XCF = |environment, agent, episode, step|
@@ -825,13 +831,17 @@ fn start(
 
     println!(
         "Starting environment {:?} with agent {:?} within visualiser {:?} and exit condition {:?} \
-        using seed {:?}, {}resetting when environment is done and {}resetting when agent is \
+        using {}, {}resetting environment when environment is done and {}resetting agent when environment is \
         done. Furthermore {} and {}, as well as {} and {}.",
         selected_environment,
         selected_agent,
         selected_visualiser,
         selected_exit_condition,
-        run_options.seed.clone().map(|s| s.seed_value),
+        if let Some(s) = &run_options.seed {
+            format!("given seed \"{:?}\"", s.seed_value)
+        } else {
+            "no given seed".to_string()
+        },
         if run_options.reset_environment_on_done {
             ""
         } else {
@@ -879,12 +889,17 @@ fn start(
                 SelectedVisualiser::PistonIn2d {
                     window_title,
                     window_dimension,
+                    max_frames_per_second,
                 } => match selected_exit_condition {
                     SelectedExitCondition::EpisodesSimulated { count_of_episodes } => {
                         run_with_two_dimensional_visualiser(
                             create_environment_gym_mountain_car(goal_velocity),
                             create_agent_random(MountainCar::action_space()),
-                            create_visualiser_piston_in_2d(window_title, window_dimension),
+                            create_visualiser_piston_in_2d(
+                                window_title,
+                                window_dimension,
+                                max_frames_per_second,
+                            ),
                             create_exit_condition_episodes_simulated_two_dimensional_visualiser(
                                 count_of_episodes,
                             ),
@@ -894,7 +909,11 @@ fn start(
                     SelectedExitCondition::VisualiserClosed => run_with_two_dimensional_visualiser(
                         create_environment_gym_mountain_car(goal_velocity),
                         create_agent_random(MountainCar::action_space()),
-                        create_visualiser_piston_in_2d(window_title, window_dimension),
+                        create_visualiser_piston_in_2d(
+                            window_title,
+                            window_dimension,
+                            max_frames_per_second,
+                        ),
                         create_exit_condition_visualiser_closed_two_dimensional_visualiser(),
                         run_options,
                     ),
@@ -905,10 +924,14 @@ fn start(
                 SelectedVisualiser::PistonIn2d {
                     window_title,
                     window_dimension,
+                    max_frames_per_second,
                 } => match selected_exit_condition {
                     SelectedExitCondition::EpisodesSimulated { count_of_episodes } => {
-                        let visualiser =
-                            create_visualiser_piston_in_2d(window_title, window_dimension);
+                        let visualiser = create_visualiser_piston_in_2d(
+                            window_title,
+                            window_dimension,
+                            max_frames_per_second,
+                        );
                         run_with_two_dimensional_visualiser(
                             create_environment_gym_mountain_car(goal_velocity),
                             create_agent_input(
@@ -923,8 +946,11 @@ fn start(
                         );
                     }
                     SelectedExitCondition::VisualiserClosed => {
-                        let visualiser =
-                            create_visualiser_piston_in_2d(window_title, window_dimension);
+                        let visualiser = create_visualiser_piston_in_2d(
+                            window_title,
+                            window_dimension,
+                            max_frames_per_second,
+                        );
                         run_with_two_dimensional_visualiser(
                             create_environment_gym_mountain_car(goal_velocity),
                             create_agent_input(
@@ -942,6 +968,7 @@ fn start(
         SelectedEnvironment::CodeBulletAiLearnsToDrive {
             track_visible,
             sensor_lines_visible,
+            car_sensor_distance,
         } => match selected_agent {
             SelectedAgent::Random => match selected_visualiser {
                 SelectedVisualiser::None => match selected_exit_condition {
@@ -950,6 +977,7 @@ fn start(
                             create_environment_code_bullet_ai_learns_to_drive(
                                 sensor_lines_visible,
                                 track_visible,
+                                car_sensor_distance,
                             ),
                             create_agent_random(AiLearnsToDrive::action_space()),
                             create_exit_condition_episodes_simulated_no_visualiser(
@@ -963,15 +991,21 @@ fn start(
                 SelectedVisualiser::PistonIn2d {
                     window_title,
                     window_dimension,
+                    max_frames_per_second,
                 } => match selected_exit_condition {
                     SelectedExitCondition::EpisodesSimulated { count_of_episodes } => {
                         run_with_two_dimensional_visualiser(
                             create_environment_code_bullet_ai_learns_to_drive(
                                 sensor_lines_visible,
                                 track_visible,
+                                car_sensor_distance,
                             ),
                             create_agent_random(AiLearnsToDrive::action_space()),
-                            create_visualiser_piston_in_2d(window_title, window_dimension),
+                            create_visualiser_piston_in_2d(
+                                window_title,
+                                window_dimension,
+                                max_frames_per_second,
+                            ),
                             create_exit_condition_episodes_simulated_two_dimensional_visualiser(
                                 count_of_episodes,
                             ),
@@ -982,9 +1016,14 @@ fn start(
                         create_environment_code_bullet_ai_learns_to_drive(
                             sensor_lines_visible,
                             track_visible,
+                            car_sensor_distance,
                         ),
                         create_agent_random(AiLearnsToDrive::action_space()),
-                        create_visualiser_piston_in_2d(window_title, window_dimension),
+                        create_visualiser_piston_in_2d(
+                            window_title,
+                            window_dimension,
+                            max_frames_per_second,
+                        ),
                         create_exit_condition_visualiser_closed_two_dimensional_visualiser(),
                         run_options,
                     ),
@@ -996,13 +1035,17 @@ fn start(
                     SelectedVisualiser::PistonIn2d {
                         window_title,
                         window_dimension,
+                        max_frames_per_second,
                     } => {
                         match selected_exit_condition {
                             SelectedExitCondition::EpisodesSimulated { count_of_episodes } => {
-                                let visualiser =
-                                    create_visualiser_piston_in_2d(window_title, window_dimension);
+                                let visualiser = create_visualiser_piston_in_2d(
+                                    window_title,
+                                    window_dimension,
+                                    max_frames_per_second,
+                                );
                                 run_with_two_dimensional_visualiser(
-                            create_environment_code_bullet_ai_learns_to_drive(sensor_lines_visible, track_visible),
+                            create_environment_code_bullet_ai_learns_to_drive(sensor_lines_visible, track_visible, car_sensor_distance),
                             create_agent_input(
                                 visualiser.input_provider(),
                                 AiLearnsToDriveInputToActionMapper::default(),
@@ -1013,10 +1056,13 @@ fn start(
                         );
                             }
                             SelectedExitCondition::VisualiserClosed => {
-                                let visualiser =
-                                    create_visualiser_piston_in_2d(window_title, window_dimension);
+                                let visualiser = create_visualiser_piston_in_2d(
+                                    window_title,
+                                    window_dimension,
+                                    max_frames_per_second,
+                                );
                                 run_with_two_dimensional_visualiser(
-                            create_environment_code_bullet_ai_learns_to_drive(sensor_lines_visible, track_visible),
+                            create_environment_code_bullet_ai_learns_to_drive(sensor_lines_visible, track_visible, car_sensor_distance),
                             create_agent_input(
                                 visualiser.input_provider(),
                                 AiLearnsToDriveInputToActionMapper::default(),
