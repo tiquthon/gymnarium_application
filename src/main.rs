@@ -5,7 +5,6 @@ mod availables;
 
 use std::collections::HashMap;
 use std::error::Error;
-use std::fmt::Debug;
 use std::io::Write;
 use std::str::FromStr;
 
@@ -14,19 +13,14 @@ use clap::{
 };
 
 use gymnarium::gymnarium_agents_random::RandomAgent;
-use gymnarium::gymnarium_base::serde::de::DeserializeOwned;
-use gymnarium::gymnarium_base::serde::Serialize;
-use gymnarium::gymnarium_base::{ActionSpace, Agent, Environment, Seed, ToActionMapper};
+use gymnarium::gymnarium_base::{ActionSpace, Environment, Reward, Seed, ToActionMapper};
 use gymnarium::gymnarium_environments_gym::mountain_car::{
     MountainCar, MountainCarInputToActionMapper,
 };
 use gymnarium::gymnarium_environments_tiquthon::code_bullet::ai_learns_to_drive::{
     AiLearnsToDrive, AiLearnsToDriveInputToActionMapper,
 };
-use gymnarium::gymnarium_visualisers_base::{
-    input, DrawableEnvironment, InputAgent, InputProvider, TwoDimensionalDrawableEnvironment,
-    TwoDimensionalVisualiser, Visualiser,
-};
+use gymnarium::gymnarium_visualisers_base::{input, InputAgent, InputProvider};
 use gymnarium::gymnarium_visualisers_piston::PistonVisualiser;
 use gymnarium::{run_with_no_visualiser, run_with_two_dimensional_visualiser, RunOptions};
 
@@ -739,13 +733,13 @@ fn start(
         car_sensor_distance: f64,
     ) -> AiLearnsToDrive {
         let mut a = AiLearnsToDrive::default();
-        a.sensor_lines_visible(sensor_lines_visible);
-        a.track_visible(track_visible);
-        a.car_sensor_distance(car_sensor_distance);
+        a.show_sensor_lines = sensor_lines_visible;
+        a.show_track = track_visible;
+        a.car_sensor_distance = car_sensor_distance;
         a
     }
 
-    fn create_agent_random(action_spaces: ActionSpace) -> RandomAgent {
+    fn create_agent_random<R: Reward>(action_spaces: ActionSpace) -> RandomAgent<R> {
         RandomAgent::with(action_spaces)
     }
 
@@ -766,61 +760,6 @@ fn start(
         max_frames_per_second: Option<u64>,
     ) -> PistonVisualiser {
         PistonVisualiser::run(window_title, window_dimension, max_frames_per_second)
-    }
-
-    // INFO: XCF = |environment, agent, episode, step|
-    fn create_exit_condition_episodes_simulated_no_visualiser<
-        EError: Error,
-        EInfo: Debug,
-        EData: Serialize + DeserializeOwned,
-        E: Environment<EError, EInfo, EData>,
-        AError: Error,
-        AData: Serialize + DeserializeOwned,
-        A: Agent<AError, AData>,
-    >(
-        count_of_episodes: u128,
-    ) -> impl Fn(&E, &A, u128, u128) -> bool {
-        move |_environment, _agent, episode, _step| episode >= count_of_episodes
-    }
-
-    fn create_exit_condition_episodes_simulated_two_dimensional_visualiser<
-        EError: Error,
-        EInfo: Debug,
-        DEError: Error,
-        EData: Serialize + DeserializeOwned,
-        E: Environment<EError, EInfo, EData>
-            + DrawableEnvironment
-            + TwoDimensionalDrawableEnvironment<DEError>,
-        AError: Error,
-        AData: Serialize + DeserializeOwned,
-        A: Agent<AError, AData>,
-        VError: Error,
-        TDVError: Error,
-        V: Visualiser<VError> + TwoDimensionalVisualiser<TDVError, VError, DEError>,
-    >(
-        count_of_episodes: u128,
-    ) -> impl Fn(&E, &A, &V, u128, u128) -> bool {
-        move |_environment, _agent, visualiser, episode, _step| {
-            !visualiser.is_open() || episode >= count_of_episodes
-        }
-    }
-
-    fn create_exit_condition_visualiser_closed_two_dimensional_visualiser<
-        EError: Error,
-        EInfo: Debug,
-        DEError: Error,
-        EData: Serialize + DeserializeOwned,
-        E: Environment<EError, EInfo, EData>
-            + DrawableEnvironment
-            + TwoDimensionalDrawableEnvironment<DEError>,
-        AError: Error,
-        AData: Serialize + DeserializeOwned,
-        A: Agent<AError, AData>,
-        VError: Error,
-        TDVError: Error,
-        V: Visualiser<VError> + TwoDimensionalVisualiser<TDVError, VError, DEError>,
-    >() -> impl Fn(&E, &A, &V, u128, u128) -> bool {
-        move |_environment, _agent, visualiser, _episode, _step| !visualiser.is_open()
     }
 
     println!(
@@ -872,9 +811,7 @@ fn start(
                         run_with_no_visualiser(
                             create_environment_gym_mountain_car(goal_velocity),
                             create_agent_random(MountainCar::action_space()),
-                            create_exit_condition_episodes_simulated_no_visualiser(
-                                count_of_episodes,
-                            ),
+                            gymnarium::exit_condition::when_no_visualiser::episodes_simulated(count_of_episodes),
                             run_options,
                         )
                     }
@@ -894,9 +831,7 @@ fn start(
                                 window_dimension,
                                 max_frames_per_second,
                             ),
-                            create_exit_condition_episodes_simulated_two_dimensional_visualiser(
-                                count_of_episodes,
-                            ),
+                            gymnarium::exit_condition::when_visualiser::closed_or_episodes_simulated(count_of_episodes),
                             run_options,
                         )
                     }
@@ -908,7 +843,7 @@ fn start(
                             window_dimension,
                             max_frames_per_second,
                         ),
-                        create_exit_condition_visualiser_closed_two_dimensional_visualiser(),
+                        gymnarium::exit_condition::when_visualiser::closed(),
                         run_options,
                     ),
                 },
@@ -933,9 +868,7 @@ fn start(
                                 MountainCarInputToActionMapper::default(),
                             ),
                             visualiser,
-                            create_exit_condition_episodes_simulated_two_dimensional_visualiser(
-                                count_of_episodes,
-                            ),
+                            gymnarium::exit_condition::when_visualiser::closed_or_episodes_simulated(count_of_episodes),
                             run_options,
                         );
                     }
@@ -952,7 +885,7 @@ fn start(
                                 MountainCarInputToActionMapper::default(),
                             ),
                             visualiser,
-                            create_exit_condition_visualiser_closed_two_dimensional_visualiser(),
+                            gymnarium::exit_condition::when_visualiser::closed(),
                             run_options,
                         );
                     }
@@ -974,9 +907,7 @@ fn start(
                                 car_sensor_distance,
                             ),
                             create_agent_random(AiLearnsToDrive::action_space()),
-                            create_exit_condition_episodes_simulated_no_visualiser(
-                                count_of_episodes,
-                            ),
+                            gymnarium::exit_condition::when_no_visualiser::episodes_simulated(count_of_episodes),
                             run_options,
                         )
                     }
@@ -1000,9 +931,7 @@ fn start(
                                 window_dimension,
                                 max_frames_per_second,
                             ),
-                            create_exit_condition_episodes_simulated_two_dimensional_visualiser(
-                                count_of_episodes,
-                            ),
+                            gymnarium::exit_condition::when_visualiser::closed_or_episodes_simulated(count_of_episodes),
                             run_options,
                         )
                     }
@@ -1018,7 +947,7 @@ fn start(
                             window_dimension,
                             max_frames_per_second,
                         ),
-                        create_exit_condition_visualiser_closed_two_dimensional_visualiser(),
+                        gymnarium::exit_condition::when_visualiser::closed(),
                         run_options,
                     ),
                 },
@@ -1045,7 +974,7 @@ fn start(
                                 AiLearnsToDriveInputToActionMapper::default(),
                             ),
                             visualiser,
-                            create_exit_condition_episodes_simulated_two_dimensional_visualiser(count_of_episodes),
+                            gymnarium::exit_condition::when_visualiser::closed_or_episodes_simulated(count_of_episodes),
                             run_options,
                         );
                             }
@@ -1062,7 +991,7 @@ fn start(
                                 AiLearnsToDriveInputToActionMapper::default(),
                             ),
                             visualiser,
-                            create_exit_condition_visualiser_closed_two_dimensional_visualiser(),
+                            gymnarium::exit_condition::when_visualiser::closed(),
                             run_options,
                         );
                             }
